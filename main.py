@@ -20,12 +20,17 @@ ser.port = "/dev/ttyS0"
 ser.baudrate = 9600
 ser.bytesize = 8  #number of bits per bytes
 ser.stopbits = 2  #number of stop bits
-ser.timeout = 1  #non-block read
+ser.timeout = 2
 ser.parity = serial.PARITY_NONE  #set parity check: no parity
 ser.xonxoff = serial.XOFF  #disable software flow control
+#ser.xonxoff = serial.XON  #disable software flow control
 ser.rtscts = False  #disable hardware (RTS/CTS) flow control
 ser.dsrdtr = False  #disable hardware (DSR/DTR) flow control
-ser.writeTimeout = 0  #timeout for write
+ser.writeTimeout = 1  #timeout for write
+#ser.flowControlOut = False
+
+print ' ----------------------------------------------'
+print ' --- START ---'
 
 try:
     ser.open()
@@ -36,8 +41,9 @@ except Exception, e:
 
 if ser.isOpen():
     try:
-        ser.flushInput() #flush input buffer, discarding all its contents
-        ser.flushOutput() #flush output buffer, aborting current output.
+        #ser.flushInput() #flush input buffer, discarding all its contents
+        #ser.flushOutput() #flush output buffer, aborting current output.
+        ser.flush() # Не удалять!!!
 
         ########################################################################
         # 1. ‘t’ Чтение значений температуры
@@ -46,13 +52,14 @@ if ser.isOpen():
         # Формат числа int(16-битное знаковое целое число со значением температуры, умноженное на 100).
         ########################################################################
         #import struct
-        print 'get temperature(sensors)'
+        print ' --- 1.Get temperature(sensors) ---'
         ser.write("t")
-        result_raw = ser.read(1)
+        ser.read(1)
         result_raw = ser.read(64)
         for sensor_id in range(0,len(result_raw),2):
-            temp = float(ord(result_raw[sensor_id]) | (ord(result_raw[sensor_id+1]) << 8))/100
-            print('t(' + str(sensor_id/2) + ')=' + '{0:4.2f}'.format(temp) + ' ˚C')
+            sign_temperature_raw = struct.unpack('<h', result_raw[sensor_id] + result_raw[sensor_id+1])
+            sign_temperature = (float(sign_temperature_raw[0]))/100
+            print('t(' + str(sensor_id/2) + ')=' + '{0:4.2f}'.format(sign_temperature) + ' ˚C')
 
         ########################################################################
         # 3. ‘l’ Чтение логического состояния выходов (не зависимо от импульсного режима)
@@ -62,12 +69,12 @@ if ser.isOpen():
         # 10 бит – 2 выходу
         # и т.д. до 0 бита, который соответствует 12 выходу
         ########################################################################
-        print 'Logical status of outputs'
+        print ' --- 3.Logical status of outputs ---'
         ser.flush()
         ser.write("l")
         result_raw = ser.read(2)
         print("outputs state (BIN) >> " + '{0:08b}'.format(ord(result_raw[0])) + '{0:08b}'.format(ord(result_raw[1])))
-        print("outputs state (DEX) >> " + str(ord(result_raw[0])) + " " + str(ord(result_raw[1])))
+        #print("outputs state (DEX) >> " + str(ord(result_raw[0])) + " " + str(ord(result_raw[1])))
 
         ########################################################################
         # 4. ‘z’ Чтение реального состояния выходов в данный конкретный момент
@@ -77,12 +84,12 @@ if ser.isOpen():
         # 10 бит – 2 выходу
         # и т.д. до 0 бита, который соответствует 12 выходу
         ########################################################################
-        print 'Real status on outputs'
+        print ' --- 4.Real status on outputs ---'
         ser.flush()
         ser.write("z")
         result_raw = ser.read(2)
         print("outputs state (BIN) >> " + '{0:08b}'.format(ord(result_raw[0])) + '{0:08b}'.format(ord(result_raw[1])))
-        print("outputs state (DEX) >> " + str(ord(result_raw[0])) + " " + str(ord(result_raw[1])))
+        #print("outputs state (DEX) >> " + str(ord(result_raw[0])) + " " + str(ord(result_raw[1])))
 
         ########################################################################
         # 5. ‘b’ Чтение уровня заряда батареи часов реального времени
@@ -90,7 +97,7 @@ if ser.isOpen():
         # Ответ: 2 байтное слово соответствующее представлению числа от 0 до 1024,
         # что соответствует напряжению соответственно от 0 до 5В
         ########################################################################
-        print 'Battary voltage'
+        print ' --- 5.Battary voltage ---'
         ser.flush()
         ser.write("b")
         result_raw = ser.read(2)
@@ -103,11 +110,10 @@ if ser.isOpen():
         # Ответ: символ ‘V’,далее 1 байт – число, представляющее длину строки текста,
         # который следует после (в конце строки нет флага окончания строки 00h)
         ########################################################################
-        print 'Current version firmware'
+        print ' --- 6.Current version firmware ---'
         ser.flush()
         ser.write("V")
-        while ser.read(1) != "V":
-            time.sleep(0.05)
+        ser.read(1)
         ver_str_len = ser.read(1)
         ver_str = ser.read(ord(ver_str_len))
         print("Version: " + ver_str)
@@ -153,13 +159,11 @@ if ser.isOpen():
         # unsigned char OUT:1; // всегда =1
         # };
         ########################################################################
-        print 'Get time'
+        print ' --- 8.Get time --- '
         ser.flush()
         ser.write("c")
         # "c"
-        while ser.read(1) != "c":
-            time.sleep(0.05)
-        # # bin struct data
+        ser.read(1)
         result_raw = ser.read(8)
 
         seconds = ((ord(result_raw[0]) & 0b01110000) >> 4) * 10 + (ord(result_raw[0]) & 0b00001111)
@@ -209,20 +213,20 @@ if ser.isOpen():
         #                                   бит 1:– Закон ИЛИ/И.
         #   };
         ########################################################################
-        print 'get programm'
+        print ' --- 9.Get program ---'
         ser.flush()
-        result_data = []
         ser.write("L")
         # "L"
-        while ser.read(1) != "L":
-            time.sleep(0.05)
+#        ser.read(1)
+        result_data = ser.read(865)
+        result_raw = result_data[1:864]
+        print(str(len(result_raw)))
         # Content in graphical format
-        for sensor_id in range(0,32,1):
-            result_raw = ser.read(26)
-            result_data.append(result_raw)
-            print(str(sensor_id) + ': ' + str(result_raw.encode("HEX")))
-
-        time.sleep(1)
+#        for sensor_id in range(0, len(result_raw)/27, 1):
+#            result_get = result_raw[sensor_id*27:(sensor_id+1)*27]
+#            result_data.append(result_get)
+#            print(str(sensor_id) + ': ' + str(result_get.encode("HEX")))
+#        time.sleep(1)
         ########################################################################
         # 11. ‘D’ Считывание серийных номеров зарегистрированных датчиков Dallas
         # Команда: 1 байт – ASCII-символ ‘D’
@@ -230,20 +234,28 @@ if ser.isOpen():
         # после передается 32 поля серийных номеров DS18B20 по 8 байт (суммарно 256 байт),
         # если датчик не зарегистрирован на центральном блоке – то получить его серийный номер не получится
         ########################################################################
-        print 'get sensor from line'
+        print ' --- 11.Get sensor from line ---'
         ser.flush()
-        time.sleep(1)
         ser.write("D")
         # "D"
-        while ser.read(1) != "D":
-            time.sleep(0.05)
+        ser.read(1)
         result_data = []
         # Content in graphical format
-        for sensor_id in range(0,31,1):
+        for sensor_id in range(0, 31, 1):
             result_raw = ser.read(8)
-            result_data.append(result_raw)
-            print(str(result_raw.encode("HEX")))
+            addr_string = ""
+            addr_byte = ""
+            sensor_is_exist = False
+            for ind in range (0, len(result_raw), 1):
+                addr_byte = "{:02x}".format(int(ord(result_raw[ind])))
+                addr_string += ":" + str(addr_byte)
+                if addr_byte != "00":
+                    sensor_is_exist = True
+            if sensor_is_exist:
+                result_data.append(addr_string)
 
+        for sensor_id in range(0, len(result_data), 1):
+            print(result_data[sensor_id])
 
         ########################################################################
         # 20. ‘S’ Считывание содержимого дисплея
@@ -254,25 +266,23 @@ if ser.isOpen():
         # 16 байт – нижняя строка
         # Итого 96 байт. Смотреть таблицу символов дисплея!
         ########################################################################
-        print 'Display content'
-        ser.flushOutput()
+        print ' --- 20.Display content ---'
+        ser.flush()
         ser.write("S")
         # "S"
-        while ser.read(1) != "S":
-            time.sleep(0.05)
-
+        result_raw = ser.read(1+64+16+16)
         # Content in graphical format
-        result_raw_content_graph64 = ser.read(55)
+        result_raw_content_graph64 = result_raw[1:64]
         # Content in text format (up string)
-        result_raw_content_txt1 = ser.read(16)
+        result_raw_content_txt1 = result_raw[64:64+16]
         # Content in text format (down string)
-        result_raw_content_txt2 = ser.read(16)
+        result_raw_content_txt2 = result_raw[64+16+1:64+16+16]
         print(str(result_raw_content_txt1))
         print(str(result_raw_content_txt2))
 
 
 
-        ser.close()
+
 
         #time.sleep(0.5)
 #        numOfLines = 0
@@ -292,6 +302,6 @@ if ser.isOpen():
     except  Exception,  e1:
         print "error communicating...: " + str(e1)
 
-#ser.close()
+    ser.close()
 else:
     print "cannot open serial port "
